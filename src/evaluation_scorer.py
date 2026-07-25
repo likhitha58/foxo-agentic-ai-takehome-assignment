@@ -1,3 +1,7 @@
+"""
+Multi-Agent Evaluation Scorer.
+"""
+
 from collections import Counter
 
 
@@ -8,10 +12,11 @@ def _count_correct_calls(made: list[str], expected: list[str]) -> int:
     made_counter = Counter(made)
     expected_counter = Counter(expected)
 
-    return sum(
-        min(made_counter[tool], expected_counter[tool])
-        for tool in expected_counter
-    )
+    correct = 0
+    for tool in expected_counter:
+        correct += min(made_counter[tool], expected_counter[tool])
+
+    return correct
 
 
 def score_runs(cases: list[dict]) -> dict:
@@ -25,6 +30,7 @@ def score_runs(cases: list[dict]) -> dict:
             "tool_call_recall": float
         }
     """
+
     if not cases:
         return {
             "completion_rate": 0.0,
@@ -32,43 +38,41 @@ def score_runs(cases: list[dict]) -> dict:
             "tool_call_recall": 0.0,
         }
 
-    completed_tasks = 0
-    total_correct_calls = 0
-    total_made_calls = 0
-    total_expected_calls = 0
+    completed = 0
+    precision_sum = 0.0
+    recall_sum = 0.0
 
     for case in cases:
+
         if case["task_completed"]:
-            completed_tasks += 1
+            completed += 1
 
         made = case["tool_calls_made"]
         expected = case["tool_calls_expected"]
 
+        # Perfect match
         if not made and not expected:
-            pass
+            precision = 1.0
+            recall = 1.0
+
+        # One side empty
         elif not made or not expected:
-            total_made_calls += len(made)
-            total_expected_calls += len(expected)
+            precision = 0.0
+            recall = 0.0
+
         else:
-            correct_calls = _count_correct_calls(made, expected)
-            total_correct_calls += correct_calls
-            total_made_calls += len(made)
-            total_expected_calls += len(expected)
+            correct = _count_correct_calls(made, expected)
+
+            precision = correct / len(made)
+            recall = correct / len(expected)
+
+        precision_sum += precision
+        recall_sum += recall
 
     total_cases = len(cases)
 
-    if total_made_calls == 0 and total_expected_calls == 0:
-        precision_score = 1.0
-        recall_score = 1.0
-    elif total_made_calls == 0 or total_expected_calls == 0:
-        precision_score = 0.0
-        recall_score = 0.0
-    else:
-        precision_score = total_correct_calls / total_made_calls
-        recall_score = total_correct_calls / total_expected_calls
-
     return {
-        "completion_rate": round(completed_tasks / total_cases, 4),
-        "tool_call_precision": round(precision_score, 4),
-        "tool_call_recall": round(recall_score, 4),
+        "completion_rate": round(completed / total_cases, 4),
+        "tool_call_precision": round(precision_sum / total_cases, 4),
+        "tool_call_recall": round(recall_sum / total_cases, 4),
     }
