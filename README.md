@@ -1,174 +1,233 @@
-# Foxo Agentic AI Takehome Assignment
+# Foxo Agentic AI Take-home Assignment
 
-This project implements two small but practical agent-simulation utilities:
+This repository contains solutions for the **Foxo Agentic AI Take-home Assignment**, implementing two practical utilities commonly found in agent-based systems:
 
-1. A token budget allocator that decides how each agent call should be executed under a limited budget.
-2. An evaluation scorer that aggregates quality metrics for completed agent runs.
+- **Token Budget Allocator** – Allocates a limited token budget across agent calls using graceful degradation.
+- **Multi-Agent Evaluation Scorer** – Computes aggregate metrics to evaluate the quality of agent execution.
 
-The code is intentionally simple, readable, and focused on the core logic behind budget allocation and run evaluation.
-
-## Project Overview
-
-The assignment is split into two independent modules:
-
-- [src/budget_allocator.py](src/budget_allocator.py): allocates available tokens across agent calls using a “full → degraded → skipped” decision policy.
-- [src/evaluation_scorer.py](src/evaluation_scorer.py): computes aggregate evaluation metrics such as completion rate and tool-call precision/recall.
-
-The repository also includes:
-
-- [tests/test_budget_allocator.py](tests/test_budget_allocator.py): validates budget allocation behavior.
-- [tests/test_evaluation_scorer.py](tests/test_evaluation_scorer.py): validates scoring behavior and edge cases.
-- [examples](examples): placeholder/example locations for usage scripts.
-
-## File-by-File Explanation
-
-### 1. src/budget_allocator.py
-
-This module contains the function `allocate_budget(calls, total_budget)`.
-
-#### What it does
-It processes a list of agent calls in order and assigns each call one of three decisions:
-
-- `full`: the full estimated token amount fits in the remaining budget.
-- `degraded`: the full amount does not fit, so the system uses half the estimated tokens (rounded down).
-- `skipped`: even the degraded version cannot fit, so the call is skipped.
-
-#### Why this is useful
-This models a common real-world behavior in agent systems: when resources are constrained, the system should still try to do something useful rather than failing completely.
-
-#### Logic behind the function
-For each call:
-
-1. Read the agent name and its estimated token cost.
-2. Compare the cost to the current `remaining_budget`.
-3. If the full cost fits, run it fully and reduce the remaining budget.
-4. If not, try the degraded version using `estimated_tokens // 2`.
-5. If even that does not fit, skip the call.
-6. Record the decision and the tokens used in the output list.
-
-#### Important behavior
-- The budget is updated after every allocation.
-- Calls are handled strictly in input order.
-- Degraded execution is rounded down to avoid fractional token usage.
-
-#### Example output
-A call with 300 estimated tokens and a remaining budget of 200 will be treated as:
-
-- full if 300 <= 200? No
-- degraded if 150 <= 200? Yes
-
-So it becomes a degraded run using 150 tokens.
+The implementation focuses on **clean code, correctness, edge-case handling, and comprehensive unit testing**.
 
 ---
 
-### 2. src/evaluation_scorer.py
+# Project Structure
 
-This module contains the function `score_runs(cases)`.
+```text
+foxo-agentic-ai-takehome-assignment/
+│
+├── src/
+│   ├── budget_allocator.py
+│   └── evaluation_scorer.py
+│
+├── tests/
+│   ├── test_budget_allocator.py
+│   └── test_evaluation_scorer.py
+│
+├── examples/
+│
+├── requirements.txt
+├── README.md
+└── .gitignore
+```
 
-#### What it does
-It evaluates a batch of completed agent-run cases and returns aggregate metrics:
+---
 
-- `completion_rate`: the fraction of cases where `task_completed` is `True`
-- `tool_call_precision`: how often the made tool calls were correct
-- `tool_call_recall`: how often the expected tool calls were recovered
+# Tech Stack
 
-#### Why this is useful
-These metrics are commonly used to monitor the quality of agent systems over time. A high completion rate means the system finishes tasks successfully, while precision and recall reflect how accurately the system used expected tools.
+- Python 3.12
+- pytest
+- collections.Counter
 
-#### Core helper function
-`_count_correct_calls(made, expected)`
+---
 
-This counts how many tool calls were correctly matched while respecting duplicates.
+# Project Overview
+
+The project consists of two independent modules.
+
+## 1. Token Budget Allocator
+
+**File:** `src/budget_allocator.py`
+
+### Objective
+
+Allocate a fixed token budget across multiple agent calls while maximizing the number of useful executions.
+
+### Decision Strategy
+
+Each agent call is processed in the given order and assigned one of the following decisions:
+
+- **full** – Execute using the full estimated token count.
+- **degraded** – Execute using half of the estimated tokens (`estimated_tokens // 2`).
+- **skipped** – Skip the call if neither full nor degraded execution fits within the remaining budget.
+
+### Algorithm
+
+For every agent call:
+
+1. Read the estimated token requirement.
+2. Check whether the full execution fits within the remaining budget.
+3. If not, attempt degraded execution.
+4. If neither fits, skip the call.
+5. Update the remaining budget after every successful allocation.
+
+### Key Features
+
+- Greedy allocation strategy
+- Budget updated after every allocation
+- Calls processed strictly in input order
+- Integer-safe degradation using floor division
+
+### Example
+
+Input:
+
+```python
+[
+    {"agent": "Planner", "estimated_tokens": 300},
+    {"agent": "Researcher", "estimated_tokens": 800}
+]
+```
+
+Budget:
+
+```text
+900
+```
+
+Output:
+
+```python
+[
+    {"agent": "Planner", "decision": "full", "tokens_used": 300},
+    {"agent": "Researcher", "decision": "degraded", "tokens_used": 400}
+]
+```
+
+---
+
+# 2. Multi-Agent Evaluation Scorer
+
+**File:** `src/evaluation_scorer.py`
+
+### Objective
+
+Evaluate the performance of multiple agent runs by computing aggregate quality metrics.
+
+### Metrics
+
+The scorer computes:
+
+- **Completion Rate**
+- **Tool Call Precision**
+- **Tool Call Recall**
+
+### Helper Function
+
+```python
+_count_correct_calls(made, expected)
+```
+
+Counts correctly matched tool calls while properly handling duplicate tool calls using `collections.Counter`.
 
 Example:
 
-- made = `["search", "search"]`
-- expected = `["search"]`
+```python
+made = ["search", "search"]
+expected = ["search"]
+```
 
-The function counts one correct match, not two, because duplicates are handled carefully.
+Correct matches:
 
-#### Logic behind the scoring calculations
-
-##### Completion rate
-
-$$
-completion\_rate = \frac{\text{number of completed cases}}{\text{total number of cases}}
-$$
-
-##### Precision
-
-Precision measures how many of the made tool calls were correct:
-
-$$
-precision = \frac{\text{total correct tool calls}}{\text{total tool calls made}}
-$$
-
-##### Recall
-
-Recall measures how many of the expected tool calls were actually captured:
-
-$$
-recall = \frac{\text{total correct tool calls}}{\text{total tool calls expected}}
-$$
-
-#### Edge-case handling
-The implementation carefully handles empty lists:
-
-- If both made and expected are empty, precision and recall are treated as `1.0`.
-- If one side is empty and the other is not, precision and recall are treated as `0.0`.
-- All returned metrics are rounded to 4 decimal places.
-
-This avoids divide-by-zero errors and makes the metric behavior consistent.
+```text
+1
+```
 
 ---
 
-## Theory Behind the Calculations
+### Evaluation Metrics
 
-### Budget allocation theory
-The budget allocator follows a simple greedy strategy:
+**Completion Rate**
 
-- Process calls in the given order.
-- Use the available resources as efficiently as possible.
-- Prefer a full run when possible.
-- If full is impossible, fall back to degraded execution.
-- If even degraded is impossible, skip the call.
+```text
+Completed Tasks / Total Tasks
+```
 
-This is a practical strategy for resource-constrained multi-agent systems because it preserves the order of execution and avoids overspending.
+**Tool Call Precision**
 
-### Evaluation metrics theory
-The scorer uses standard information-retrieval-style metrics:
+```text
+Correct Tool Calls / Tool Calls Made
+```
 
-- Precision answers: “Of all the calls the system made, how many were correct?”
-- Recall answers: “Of all the calls the system should have made, how many did it actually make?”
+**Tool Call Recall**
 
-These metrics are widely used to evaluate tool selection, action accuracy, and downstream run quality.
+```text
+Correct Tool Calls / Expected Tool Calls
+```
+
+### Edge Cases Handled
+
+- Empty input list
+- Empty tool-call lists
+- Duplicate tool calls
+- Division-by-zero prevention
+- Metrics rounded to 4 decimal places
 
 ---
 
-## How to Run the Project
+# Design Approach
 
-### 1. Install dependencies
-If needed, install the required package list:
+## Budget Allocation
+
+The allocator follows a **greedy strategy**.
+
+For every call:
+
+1. Prefer full execution.
+2. Otherwise attempt degraded execution.
+3. Otherwise skip the call.
+
+This mirrors practical resource allocation used in constrained multi-agent systems.
+
+## Evaluation Scoring
+
+The evaluation module computes aggregate performance using standard information-retrieval metrics.
+
+Duplicate tool calls are matched correctly using `Counter`, preventing over-counting while ensuring accurate precision and recall calculations.
+
+---
+
+# Installation
+
+Clone the repository and install the required dependency.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Run tests
-Run the full test suite:
+---
+
+# Running the Tests
+
+Run all tests:
 
 ```bash
-python -m pytest -q
+python -m pytest -v
 ```
 
-Or run the two relevant suites directly:
+Run only the Budget Allocator tests:
 
 ```bash
-python -m pytest -q tests/test_budget_allocator.py tests/test_evaluation_scorer.py
+python -m pytest tests/test_budget_allocator.py -v
 ```
 
-### 3. Example usage
-You can import the functions directly in Python:
+Run only the Evaluation Scorer tests:
+
+```bash
+python -m pytest tests/test_evaluation_scorer.py -v
+```
+
+---
+
+# Example Usage
 
 ```python
 from src.budget_allocator import allocate_budget
@@ -188,14 +247,9 @@ score_result = score_runs(
     [
         {
             "task_completed": True,
-            "tool_calls_made": ["search", "search"],
-            "tool_calls_expected": ["search"],
-        },
-        {
-            "task_completed": False,
-            "tool_calls_made": [],
-            "tool_calls_expected": ["search"],
-        },
+            "tool_calls_made": ["search", "calculator"],
+            "tool_calls_expected": ["search", "calculator"],
+        }
     ]
 )
 
@@ -204,27 +258,40 @@ print(score_result)
 
 ---
 
-## Testing Summary
+# Test Coverage
 
-The project uses pytest for validation.
+The automated test suite validates:
 
-The tests cover:
+### Budget Allocator
 
-- full execution when budget is sufficient
-- degraded execution when full does not fit
-- skipping when neither full nor degraded fit
-- empty input handling
-- zero-budget behavior
-- duplicate-aware call counting
-- empty-list edge cases for precision and recall
+- Full execution
+- Degraded execution
+- Skipped execution
+- Budget updates after allocation
+- Empty inputs
+- Zero budget
+- Odd-token degradation
+
+### Evaluation Scorer
+
+- Perfect matches
+- Duplicate-aware tool matching
+- Empty input handling
+- Empty tool-call edge cases
+- Partial matches
+- Average metric calculation across multiple cases
 
 ---
 
-## Summary
+# Results
 
-This repository demonstrates two core ideas in agent systems:
+- ✅ Token Budget Allocator implemented
+- ✅ Multi-Agent Evaluation Scorer implemented
+- ✅ 16 automated unit tests
+- ✅ All tests passing
 
-- Resource-aware execution through budget allocation
-- Quality measurement through evaluation scoring
+---
 
-Together, these pieces form a compact framework for reasoning about how agents should behave under constraints and how their performance should be measured over time.
+# License
+
+This project was developed as part of the **Foxo Agentic AI Take-home Assignment**.
